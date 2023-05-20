@@ -32,7 +32,10 @@ import org.springframework.security.oauth2.server.authorization.settings.ClientS
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
-
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -49,28 +52,36 @@ public class AuthorizarionServerConfig {
     @Autowired
     private UserRepository repository;
 
-
     @Bean
     @Order(1)
     SecurityFilterChain authSecurityFilterChain(HttpSecurity http) throws Exception {
         http.cors(Customizer.withDefaults());
+      
         OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
+
+        http.exceptionHandling(exception -> exception
+        .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
+        //.authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("http://localhost:4200/login")))
+        .oauth2ResourceServer(OAuth2ResourceServerConfigurer::jwt);
+        
         http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
-                .oidc(Customizer.withDefaults());	// Enable OpenID Connect 1.0
-        http.oauth2ResourceServer(OAuth2ResourceServerConfigurer::jwt);
+                .oidc(Customizer.withDefaults()); // Enable OpenID Connect 1.0
+        
         return http.build();
     }
 
     @Bean
     @Order(2)
     SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.authorizeHttpRequests(auth -> auth.
-        anyRequest().authenticated()).formLogin(Customizer.withDefaults());
-        http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**"));
+        http.cors(Customizer.withDefaults());
+        http.authorizeHttpRequests(authorize -> authorize
+                .requestMatchers("/login").permitAll()
+                .anyRequest().authenticated())
+                .formLogin(Customizer.withDefaults());
+        //http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**"));
         return http.build();
     }
 
-    
     @Bean
     OAuth2TokenCustomizer<JwtEncodingContext> tokenCustomizer() {
         return context -> {
@@ -99,7 +110,7 @@ public class AuthorizarionServerConfig {
     }
 
     @Bean
-    public RegisteredClientRepository registeredClientRepository() {
+    RegisteredClientRepository registeredClientRepository() {
         RegisteredClient registeredClient = RegisteredClient.withId(UUID.randomUUID().toString())
                 .clientId("client")
                 .clientSecret(passwordEncoder().encode("secret"))
@@ -107,6 +118,7 @@ public class AuthorizarionServerConfig {
                 .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
                 .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
                 .redirectUri("https://oauthdebugger.com/debug")
+                .redirectUri("http://localhost:4200/authorized")
                 .scope(OidcScopes.OPENID)
                 .clientSettings(clientSettings())
                 .build();
@@ -157,5 +169,17 @@ public class AuthorizarionServerConfig {
             throw new RuntimeException(e.getMessage());
         }
         return keyPair;
+    }
+
+    @Bean
+    CorsConfigurationSource corsConfigurationSource(){
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        CorsConfiguration cors = new CorsConfiguration();
+        cors.addAllowedHeader("*");
+        cors.addAllowedMethod("*");
+        cors.setAllowCredentials(true);
+        cors.addAllowedOrigin("http://localhost:4200");
+        source.registerCorsConfiguration("/**", cors);
+        return source;
     }
 }
