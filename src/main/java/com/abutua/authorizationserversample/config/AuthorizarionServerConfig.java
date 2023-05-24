@@ -1,4 +1,4 @@
-package com.abutua.authorizationserversample.entities.config;
+package com.abutua.authorizationserversample.config;
 
 import com.abutua.authorizationserversample.repositories.UserRepository;
 import com.nimbusds.jose.jwk.JWKSet;
@@ -9,6 +9,7 @@ import com.nimbusds.jose.proc.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -31,7 +32,10 @@ import org.springframework.security.oauth2.server.authorization.settings.Authori
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
+import org.springframework.security.web.DefaultRedirectStrategy;
+import org.springframework.security.web.RedirectStrategy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -46,7 +50,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration
 public class AuthorizarionServerConfig {
@@ -55,34 +58,30 @@ public class AuthorizarionServerConfig {
     private UserRepository repository;
 
     @Bean
-    @Order(1)
+    @Order(Ordered.HIGHEST_PRECEDENCE)
     SecurityFilterChain authSecurityFilterChain(HttpSecurity http) throws Exception {
 
         OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
 
-        http.cors(Customizer.withDefaults()).formLogin(login -> login
-                .loginPage("/mylogin")
-                .and()
-                .getConfigurer(OAuth2AuthorizationServerConfigurer.class)
-                .oidc(Customizer.withDefaults())   
-        );
-
-        return http.build();
+        return http.cors(Customizer.withDefaults())
+                .formLogin(login -> login
+                        .loginPage("/mylogin")
+                        .and()
+                        .getConfigurer(OAuth2AuthorizationServerConfigurer.class)
+                        .oidc(Customizer.withDefaults()))
+                 .build();
     }
 
+ 
     @Bean
-    @Order(2)
     SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
         http.cors(Customizer.withDefaults())
                 .authorizeHttpRequests(authorize -> authorize
-                                .requestMatchers("/mylogin").permitAll()
-                                .anyRequest().authenticated()
-                )
+                        .requestMatchers("/mylogin").permitAll()
+                        .anyRequest().authenticated())
                 .formLogin(login -> login
-                                .failureUrl("/mylogin?error=true")
-                )
-                
-            ;
+                        .failureHandler(new CustomAuthenticationFailureHandler())
+                );
 
         return http.build();
     }
