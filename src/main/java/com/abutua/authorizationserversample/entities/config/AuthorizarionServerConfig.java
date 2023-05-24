@@ -46,6 +46,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static org.springframework.security.config.Customizer.withDefaults;
+
 @Configuration
 public class AuthorizarionServerConfig {
 
@@ -55,30 +57,33 @@ public class AuthorizarionServerConfig {
     @Bean
     @Order(1)
     SecurityFilterChain authSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.cors(Customizer.withDefaults());
-      
+
         OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
 
-        http.exceptionHandling(exception -> exception
-        .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/login")))
-        //.authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("http://localhost:4200/login")))
-        .oauth2ResourceServer(OAuth2ResourceServerConfigurer::jwt);
-        
-        http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
-                .oidc(Customizer.withDefaults()); // Enable OpenID Connect 1.0
-        
+        http.cors(Customizer.withDefaults()).formLogin(login -> login
+                .loginPage("/mylogin")
+                .and()
+                .getConfigurer(OAuth2AuthorizationServerConfigurer.class)
+                .oidc(Customizer.withDefaults())   
+        );
+
         return http.build();
     }
 
     @Bean
     @Order(2)
     SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.cors(Customizer.withDefaults());
-        http.authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/login").permitAll()
-                .anyRequest().authenticated())
-                .formLogin(Customizer.withDefaults());
-        //http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**"));
+        http.cors(Customizer.withDefaults())
+                .authorizeHttpRequests(authorize -> authorize
+                                .requestMatchers("/mylogin").permitAll()
+                                .anyRequest().authenticated()
+                )
+                .formLogin(login -> login
+                                .failureUrl("/mylogin?error=true")
+                )
+                
+            ;
+
         return http.build();
     }
 
@@ -172,7 +177,7 @@ public class AuthorizarionServerConfig {
     }
 
     @Bean
-    CorsConfigurationSource corsConfigurationSource(){
+    CorsConfigurationSource corsConfigurationSource() {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         CorsConfiguration cors = new CorsConfiguration();
         cors.addAllowedHeader("*");
