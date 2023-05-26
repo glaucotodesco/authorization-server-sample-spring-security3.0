@@ -6,6 +6,10 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,8 +17,9 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.oauth2.server.resource.OAuth2ResourceServerConfigurer;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -32,15 +37,14 @@ import org.springframework.security.oauth2.server.authorization.settings.Authori
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
-import org.springframework.security.web.DefaultRedirectStrategy;
-import org.springframework.security.web.RedirectStrategy;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.io.IOException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
@@ -49,7 +53,6 @@ import java.security.interfaces.RSAPublicKey;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
 
 @Configuration
 public class AuthorizarionServerConfig {
@@ -60,29 +63,30 @@ public class AuthorizarionServerConfig {
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
     SecurityFilterChain authSecurityFilterChain(HttpSecurity http) throws Exception {
-
         OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
-
-        return http.cors(Customizer.withDefaults())
+        return http
+                .cors(Customizer.withDefaults())
                 .formLogin(login -> login
-                        .loginPage("/mylogin")
+                        .loginPage("/oauth2/login")
                         .and()
                         .getConfigurer(OAuth2AuthorizationServerConfigurer.class)
                         .oidc(Customizer.withDefaults()))
-                 .build();
+                .build();
     }
 
- 
     @Bean
     SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
         http.cors(Customizer.withDefaults())
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/mylogin").permitAll()
+                        .requestMatchers("/oauth2/login", "/img/**").permitAll()
                         .anyRequest().authenticated())
+           
                 .formLogin(login -> login
-                        .failureHandler(new CustomAuthenticationFailureHandler())
-                );
-
+                        .failureHandler((request, response, exception) ->  response.sendRedirect(request.getContextPath() + "/oauth2/login?error=true"))
+                        )
+                .logout().logoutSuccessUrl("http://localhost:4200").logoutRequestMatcher(new AntPathRequestMatcher("/logout")).permitAll()
+                .and()
+                .exceptionHandling().authenticationEntryPoint(new AjaxAwareAuthenticationEntryPoint("http://localhost:4200"));
         return http.build();
     }
 
@@ -187,3 +191,22 @@ public class AuthorizarionServerConfig {
         return source;
     }
 }
+
+
+
+class AjaxAwareAuthenticationEntryPoint extends LoginUrlAuthenticationEntryPoint {
+    public AjaxAwareAuthenticationEntryPoint(String loginFormUrl) {
+        super(loginFormUrl);
+    }
+
+    @Override
+    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) throws IOException, ServletException {
+        String ajaxHeader = ((HttpServletRequest) request).getHeader("X-Requested-With");
+        if ("XMLHttpRequest".equals(ajaxHeader)) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Ajax Request Denied (Session Expired)");
+        } else {
+            super.commence(request, response, authException);
+        }
+    }
+}
+
