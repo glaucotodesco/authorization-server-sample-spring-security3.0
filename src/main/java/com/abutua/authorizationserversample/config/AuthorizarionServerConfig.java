@@ -11,6 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -53,10 +54,14 @@ import java.security.interfaces.RSAPublicKey;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.core.env.Environment;
 
 @Configuration
 public class AuthorizarionServerConfig {
 
+    @Autowired
+    private Environment environment;
+    
     @Autowired
     private UserRepository repository;
 
@@ -67,26 +72,30 @@ public class AuthorizarionServerConfig {
         return http
                 .cors(Customizer.withDefaults())
                 .formLogin(login -> login
-                        .loginPage("/oauth2/login")
+                        .loginPage(environment.getProperty("security.login-page"))
                         .and()
                         .getConfigurer(OAuth2AuthorizationServerConfigurer.class)
                         .oidc(Customizer.withDefaults()))
                 .build();
     }
-
+   
     @Bean
     SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
         http.cors(Customizer.withDefaults())
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/oauth2/login", "/img/**").permitAll()
-                        .anyRequest().authenticated())
-           
+                        .requestMatchers(environment.getProperty("security.login-page"), "/img/**").permitAll()
+                        .anyRequest().authenticated()
+                )
                 .formLogin(login -> login
-                        .failureHandler((request, response, exception) ->  response.sendRedirect(request.getContextPath() + "/oauth2/login?error=true"))
-                        )
-                .logout().logoutSuccessUrl("http://localhost:4200").logoutRequestMatcher(new AntPathRequestMatcher("/logout")).permitAll()
-                .and()
-                .exceptionHandling().authenticationEntryPoint(new AjaxAwareAuthenticationEntryPoint("http://localhost:4200"));
+                        .failureHandler((request, response, exception) -> response.sendRedirect(request.getContextPath() + environment.getProperty("security.login-page") +"?error=true"))
+                )
+                .logout(logout -> logout
+                        .logoutSuccessUrl(environment.getProperty("security.client-base-url"))
+                        .logoutRequestMatcher(new AntPathRequestMatcher("/logout")).permitAll()
+                )
+                .exceptionHandling(handling -> handling
+                        .authenticationEntryPoint(new AjaxAwareAuthenticationEntryPoint(environment.getProperty("security.client-base-url")))
+                );
         return http.build();
     }
 
@@ -110,23 +119,23 @@ public class AuthorizarionServerConfig {
 
     @Bean
     UserDetailsService userDetailsService() {
-        return username -> repository.findByEmail(username)
+        return username -> repository
+                .findByEmail(username)
                 .orElseThrow(() -> {
-                    System.out.println("not found");
                     throw new UsernameNotFoundException("User not found");
                 });
     }
 
+    //TODO Change to Persistance Mode in future! 
     @Bean
     RegisteredClientRepository registeredClientRepository() {
         RegisteredClient registeredClient = RegisteredClient.withId(UUID.randomUUID().toString())
-                .clientId("client")
-                .clientSecret(passwordEncoder().encode("secret"))
+                .clientId(environment.getProperty("security.client-id"))
+                .clientSecret(passwordEncoder().encode(environment.getProperty("security.client-secret")))
                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
                 .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
-                .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
                 .redirectUri("https://oauthdebugger.com/debug")
-                .redirectUri("http://localhost:4200/authorized")
+                .redirectUri(environment.getProperty("security.client-authorized-redirect-uri"))
                 .scope(OidcScopes.OPENID)
                 .clientSettings(clientSettings())
                 .build();
@@ -139,22 +148,22 @@ public class AuthorizarionServerConfig {
     }
 
     @Bean
-    public ClientSettings clientSettings() {
+    ClientSettings clientSettings() {
         return ClientSettings.builder().requireProofKey(true).build();
     }
-
+  
     @Bean
-    public AuthorizationServerSettings authorizationServerSettings() {
-        return AuthorizationServerSettings.builder().issuer("http://localhost:9000").build();
+    AuthorizationServerSettings authorizationServerSettings() {
+        return AuthorizationServerSettings.builder().issuer(environment.getProperty("security.server-url")).build();
     }
 
     @Bean
-    public JwtDecoder jwtDecoder(JWKSource<SecurityContext> jwkSource) {
+    JwtDecoder jwtDecoder(JWKSource<SecurityContext> jwkSource) {
         return OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource);
     }
 
     @Bean
-    public JWKSource<SecurityContext> jwkSource() {
+    JWKSource<SecurityContext> jwkSource() {
         RSAKey rsaKey = generateRSAKey();
         JWKSet jwkSet = new JWKSet(rsaKey);
         return (jwkSelector, securityContext) -> jwkSelector.select(jwkSet);
@@ -186,7 +195,7 @@ public class AuthorizarionServerConfig {
         cors.addAllowedHeader("*");
         cors.addAllowedMethod("*");
         cors.setAllowCredentials(true);
-        cors.addAllowedOrigin("http://localhost:4200");
+        cors.addAllowedOrigin(environment.getProperty("security.client-base-url"));
         source.registerCorsConfiguration("/**", cors);
         return source;
     }
