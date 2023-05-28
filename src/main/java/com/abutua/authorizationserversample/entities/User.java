@@ -118,6 +118,12 @@ public class User implements UserDetails {
         return true;
     }
 
+    
+    @Override
+    public String toString() {
+        return "User [id=" + id + ", name=" + name + ", email=" + email + "]";
+    }
+
     public boolean hasRole(String role){
 		return roles.stream()
 		            .anyMatch( e -> e.getAuthority().equals(role));

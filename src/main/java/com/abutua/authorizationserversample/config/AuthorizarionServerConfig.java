@@ -1,5 +1,6 @@
 package com.abutua.authorizationserversample.config;
 
+import com.abutua.authorizationserversample.entities.User;
 import com.abutua.authorizationserversample.repositories.UserRepository;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
@@ -61,7 +62,7 @@ public class AuthorizarionServerConfig {
 
     @Autowired
     private Environment environment;
-    
+
     @Autowired
     private UserRepository repository;
 
@@ -78,24 +79,23 @@ public class AuthorizarionServerConfig {
                         .oidc(Customizer.withDefaults()))
                 .build();
     }
-   
+
     @Bean
     SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
         http.cors(Customizer.withDefaults())
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(environment.getProperty("security.login-page"), "/img/**").permitAll()
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated())
                 .formLogin(login -> login
-                        .failureHandler((request, response, exception) -> response.sendRedirect(request.getContextPath() + environment.getProperty("security.login-page") +"?error=true"))
-                )
+                        .failureHandler((request, response,
+                                exception) -> response.sendRedirect(request.getContextPath()
+                                        + environment.getProperty("security.login-page") + "?error=true")))
                 .logout(logout -> logout
                         .logoutSuccessUrl(environment.getProperty("security.client-base-url"))
-                        .logoutRequestMatcher(new AntPathRequestMatcher("/logout")).permitAll()
-                )
+                        .logoutRequestMatcher(new AntPathRequestMatcher("/logout")).permitAll())
                 .exceptionHandling(handling -> handling
-                        .authenticationEntryPoint(new AjaxAwareAuthenticationEntryPoint(environment.getProperty("security.client-base-url")))
-                );
+                        .authenticationEntryPoint(new AjaxAwareAuthenticationEntryPoint(
+                                environment.getProperty("security.client-base-url"))));
         return http.build();
     }
 
@@ -108,11 +108,16 @@ public class AuthorizarionServerConfig {
                 context.getClaims().claim("token_type", "id token");
             }
 
+            User user = (User) principal.getPrincipal();
+
             if (context.getTokenType().getValue().equals("access_token")) {
                 context.getClaims().claim("token_type", "access token");
                 Set<String> roles = principal.getAuthorities().stream().map(GrantedAuthority::getAuthority)
                         .collect(Collectors.toSet());
-                context.getClaims().claim("roles", roles).claim("username", principal.getName());
+                context.getClaims().claim("roles", roles)
+                        .claim("userId", user.getId())
+                        .claim("userName", principal.getName())
+                        .claim("userRealName", user.getName());
             }
         };
     }
@@ -126,7 +131,7 @@ public class AuthorizarionServerConfig {
                 });
     }
 
-    //TODO Change to Persistance Mode in future! 
+    // TODO Change to Persistance Mode in future!
     @Bean
     RegisteredClientRepository registeredClientRepository() {
         RegisteredClient registeredClient = RegisteredClient.withId(UUID.randomUUID().toString())
@@ -151,7 +156,7 @@ public class AuthorizarionServerConfig {
     ClientSettings clientSettings() {
         return ClientSettings.builder().requireProofKey(true).build();
     }
-  
+
     @Bean
     AuthorizationServerSettings authorizationServerSettings() {
         return AuthorizationServerSettings.builder().issuer(environment.getProperty("security.server-url")).build();
@@ -201,15 +206,14 @@ public class AuthorizarionServerConfig {
     }
 }
 
-
-
 class AjaxAwareAuthenticationEntryPoint extends LoginUrlAuthenticationEntryPoint {
     public AjaxAwareAuthenticationEntryPoint(String loginFormUrl) {
         super(loginFormUrl);
     }
 
     @Override
-    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) throws IOException, ServletException {
+    public void commence(HttpServletRequest request, HttpServletResponse response,
+            AuthenticationException authException) throws IOException, ServletException {
         String ajaxHeader = ((HttpServletRequest) request).getHeader("X-Requested-With");
         if ("XMLHttpRequest".equals(ajaxHeader)) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Ajax Request Denied (Session Expired)");
@@ -218,4 +222,3 @@ class AjaxAwareAuthenticationEntryPoint extends LoginUrlAuthenticationEntryPoint
         }
     }
 }
-
