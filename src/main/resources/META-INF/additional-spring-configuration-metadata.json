@@ -28,5 +28,10 @@
     "name": "security.server-url",
     "type": "java.lang.String",
     "description": "A description for 'security.server-url'"
+  },
+  {
+    "name": "security.client-id",
+    "type": "java.lang.String",
+    "description": "A description for 'security.client-id'"
   }
 ]}
