@@ -12,15 +12,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.oauth2.server.resource.OAuth2ResourceServerConfigurer;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
@@ -59,6 +57,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.core.env.Environment;
+import static org.springframework.boot.autoconfigure.security.servlet.PathRequest.toH2Console;
 
 @Configuration
 public class AuthorizarionServerConfig {
@@ -81,6 +80,25 @@ public class AuthorizarionServerConfig {
                         .getConfigurer(OAuth2AuthorizationServerConfigurer.class)
                         .oidc(Customizer.withDefaults()))
                 .build();
+    }
+
+
+    @Bean
+    @Order(2)
+    @Profile("test")
+    SecurityFilterChain h2ConsoleFilter(HttpSecurity http) throws Exception {
+        System.out.println("Test Profile");
+        http.csrf(csrf -> csrf.ignoringRequestMatchers(toH2Console()));
+        http.headers(headers -> headers
+                .frameOptions(frameOptions -> frameOptions
+                        .disable()));
+
+        http.authorizeHttpRequests(authorize -> authorize
+                .requestMatchers(environment.getProperty("security.login-page"), "/img/**").permitAll()        
+                .requestMatchers(toH2Console()).permitAll()
+                .anyRequest().authenticated());
+
+        return http.build();
     }
 
     @Bean
